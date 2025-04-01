@@ -37,6 +37,13 @@ def parsePacket(packet):
     body = packet[HEADERSIZE:]
     return (isEnd, seqNo, body)
 
+# takes in an integer seqNo, return bytes
+# header format: f'{str(checkSum).zfill(10)}{str(seqNo).zfill(5)}ACK'
+def makeAck(seqNo):
+    ack = f'{str(seqNo).zfill(5)}ACK'
+    checkSum = computeChecksum(ack.encode())
+    return f'{str(checkSum).zfill(10)}{ack}'.encode()
+
 logger = logging.getLogger()
 logging.basicConfig(level=logging.INFO)
 logger.info('Starting Bob...')
@@ -48,35 +55,42 @@ commSocket.bind(address)
 logger.info(f'Bob receiving from {address}')
 
 # data is a string
-while True:
-    try:
-        data = ''
-        while True:
-            # receive packet
-            pkt = commSocket.recv(5000)
-            logger.info(f'Received: {pkt}')
+expectedSeqNo = 0
+data = ''
+try:
+    while True:
+        # receive packet
+        pkt, aliceAddr = commSocket.recvfrom(5000)
+        logger.info(f'Received: {pkt} from {aliceAddr}')
 
-            # detect corruption
-            # if not compareChecksum(pkt):
-            #     # send unACK
-            #     logger.warning(f'Packet corrupted, sending unACK')
-            #     commSocket.sendto('unACK'.encode(), address)
-            #     continue
-
-            # parse packet
-            isEnd, seqNo, body = parsePacket(pkt)
-            logger.info(f'Parsed: isEnd={isEnd}, seqNo={seqNo}, body={body}')
-
+        # detect corruption
+        if not compareChecksum(pkt):
             # send ACK
-            commSocket.sendto('ACK'.encode(), address)
+            logger.warning(f'Packet corrupted, requesting resend')
+            commSocket.sendto('NAK'.encode(), aliceAddr)
+            continue
 
-            data += body
-            if isEnd:
-                break
-            
-        logger.info(f'Received data of length {len(data)}: {data}')
+        # parse packet
+        isEnd, seqNo, body = parsePacket(pkt)
+        logger.info(f'Parsed: isEnd={isEnd}, seqNo={seqNo}, body={body}')
 
-        print(data)
-    except KeyboardInterrupt:
-        logger.info('Keyboard interrupt encountered, closing connection.')
-        break
+        # detect duplicate packet
+        if seqNo != expectedSeqNo:
+            # drop packet
+            # logger.warning(f'Out of order packet, expected {expectedSeqNo}, got {seqNo}')
+            # commSocket.sendto('unACK'.encode(), aliceAddr)
+            continue
+
+        # send ACK
+        commSocket.sendto('ACK'.encode(), aliceAddr)
+        expectedSeqNo += 1
+
+        data += body
+        if isEnd:
+            break
+        
+    logger.info(f'Received data of length {len(data)}: {data}')
+
+    print(data)
+except KeyboardInterrupt:
+    logger.info('Keyboard interrupt encountered, ending program')

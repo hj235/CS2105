@@ -48,10 +48,15 @@ while data:
     commSocket.sendto(packet.encode(), address)
 
     # wait for ACK
-    # ack = commSocket.recv(5000)
-    # if not ack or not ack.decode() == 'ACK':
-    #     logging.warning('timed out, resending')
-    #     continue
+    ack = b''
+    try:
+        ack = commSocket.recv(5000)
+    except socket.timeout:
+        logging.warning('timed out, resending')
+        continue
+    if ack.decode() != 'ACK':
+        logging.warning('ack corrupted, resending')
+        continue
 
     # continue
     seqNo += 1
