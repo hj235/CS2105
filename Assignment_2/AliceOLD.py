@@ -26,18 +26,29 @@ logging.info(f'Alice sending to {address}')
 
 # data, body, header and packet are all strings
 seqNo = 0
-data = (''.join(sys.stdin.readlines()))[:-1]
-logging.info(f'Sending data of length {len(data)}, {data[:10]}...{data[10:]}')
+while True:
+    data = ''
+    try:
+        data = input()
+    except EOFError:
+        logging.info('EOF encountered, closing connection.')
+        commSocket.close()
+        break
+    # except KeyboardInterrupt:
+    #     logging.warning('Keyboard interrupt, closing connection.')
+    #     commSocket.close()
+    #     break
+    logging.info(f'Sending data of length {len(data)}: {data}')
 
-while data:
-    # seqNo %= 100000
-    body = data[:44]
-    data = data[44:]
-    if not data:
-        isEnd = 1
-    else:
-        isEnd = 0
-    header = makeHeader(isEnd, seqNo, computeChecksum(body.encode()))
-    seqNo += 1
-    packet = header + body
-    commSocket.sendto(packet.encode(), address)
+    while data:
+        seqNo %= 100000
+        body = data[:44]
+        data = data[44:]
+        if not data:
+            isEnd = 1
+        else:
+            isEnd = 0
+        header = makeHeader(isEnd, seqNo, computeChecksum(body.encode()))
+        seqNo += 1
+        packet = header + body
+        commSocket.sendto(packet.encode(), address)

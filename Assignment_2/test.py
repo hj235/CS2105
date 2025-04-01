@@ -1,6 +1,20 @@
 import sys
 import logging
 import zlib
+from collections import deque
+
+# dq = deque(maxlen=4)
+# dq.append(1)
+# dq.append(2)
+# dq.append(3)
+# dq.insert(0, 4)
+# print(dq)
+# print(dq.popleft())
+# print(dq)
+# print(dq.pop())
+# dq.insert(0, 1)
+# print(dq)
+
 # logger = logging.getLogger()
 # logging.basicConfig(level=logging.DEBUG)
 # logger.info('Starting test.py...')
@@ -21,5 +35,9 @@ import zlib
 # print(int(checkSum.decode()))
 # print(len(bytes(32)))
 # print(f'Hello World! {sys.argv}')
-s = '123'
-print(int(s))
+# s = '123'
+# print(int(s))
+
+data = sys.stdin.readlines()
+print(data)
+print(''.join(data))
