@@ -4,6 +4,7 @@ import logging
 import zlib
 
 CHECKSUMLENGTH = 10
+SEQNOLENGTH = 5
 HEADERSIZE = 16
 BODYSIZE = 64 - HEADERSIZE
 
@@ -15,6 +16,24 @@ def makeHeader(isEnd, seqNo, checkSum):
 def computeChecksum(data):
     checkSum = zlib.crc32(data)
     return checkSum
+
+# packet and checkSum are both bytes
+def compareChecksum(packet):
+    checkSum = 0
+    try:
+        checkSum = int(packet[:CHECKSUMLENGTH].decode())
+    except ValueError:
+        logger.warning(f'CheckSum corrupted: {packet[:CHECKSUMLENGTH]}')
+        return False
+    recompute = computeChecksum(packet[CHECKSUMLENGTH:])
+    logging.debug(f'R: {recompute}, c: {checkSum}, using {packet[CHECKSUMLENGTH:]}')
+    return recompute == checkSum
+
+def parseAck(packet):
+    # header format: f'{str(checkSum).zfill(10)}{str(seqNo).zfill(5)}ACK'
+    packet = packet.decode()
+    seqNo = int(packet[CHECKSUMLENGTH:CHECKSUMLENGTH+SEQNOLENGTH])
+    return seqNo
 
 logger = logging.getLogger()
 logging.basicConfig(level=logging.DEBUG)
@@ -54,10 +73,27 @@ while data:
     except socket.timeout:
         logging.warning('timed out, resending')
         continue
-    if ack.decode() != 'ACK':
+    if ack == b'FIN':
+        logging.info('FIN received, attempting to close connection')
+        break
+    if not compareChecksum(ack):
         logging.warning('ack corrupted, resending')
+        continue
+    if parseAck(ack) == seqNo:
+        logging.warning(f'ack number mismatch, expected {seqNo+1}, got {parseAck(ack)}')
         continue
 
     # continue
     seqNo += 1
     data = data[BODYSIZE:]
+
+# close connection
+while True:
+    commSocket.sendto(b'FINACK', address)
+    refin = b''
+    try:
+        commSocket.settimeout(1)
+        refin = commSocket.recv(5000)
+    except socket.timeout:
+        logging.info('Connection timed out, assumed closed')
+        break

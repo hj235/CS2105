@@ -31,7 +31,6 @@ def compareChecksum(packet):
 def parsePacket(packet):
     # header format: f'{str(checkSum).zfill(10)}{str(seqNo).zfill(5)}{isEnd}'
     packet = packet.decode()
-    # checkSum = packet[:CHECKSUMLENGTH]
     seqNo = int(packet[CHECKSUMLENGTH:HEADERSIZE-1])
     isEnd = int(packet[HEADERSIZE-1])
     body = packet[HEADERSIZE:]
@@ -67,7 +66,7 @@ try:
         if not compareChecksum(pkt):
             # send ACK
             logger.warning(f'Packet corrupted, requesting resend')
-            commSocket.sendto('NAK'.encode(), aliceAddr)
+            commSocket.sendto(makeAck(expectedSeqNo), aliceAddr)
             continue
 
         # parse packet
@@ -76,13 +75,13 @@ try:
 
         # detect duplicate packet
         if seqNo != expectedSeqNo:
-            # drop packet
-            # logger.warning(f'Out of order packet, expected {expectedSeqNo}, got {seqNo}')
-            # commSocket.sendto('unACK'.encode(), aliceAddr)
+            # drop packet, request resend
+            logger.warning(f'Duplicate packet, requesting resend')
+            commSocket.sendto(makeAck(expectedSeqNo), aliceAddr)
             continue
 
         # send ACK
-        commSocket.sendto('ACK'.encode(), aliceAddr)
+        commSocket.sendto(makeAck(seqNo+1), aliceAddr)
         expectedSeqNo += 1
 
         data += body
@@ -90,6 +89,23 @@ try:
             break
         
     logger.info(f'Received data of length {len(data)}: {data}')
+    
+    logger.info('Data received, attempting to close the connection...')
+    while True:
+        commSocket.sendto(b'FIN', aliceAddr)
+        finack = b''
+        try:
+            commSocket.settimeout(0.06)
+            finack = commSocket.recv(5000)
+            if finack == b'FINACK':
+                logger.info('FINACK received, closing connection')
+                break
+            else:
+                logger.warning(f'FINACK corrupted, resending')
+                continue
+        except socket.timeout:
+            logger.warning('Timeout, resending FIN')
+            continue
 
     print(data)
 except KeyboardInterrupt:
