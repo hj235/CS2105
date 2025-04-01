@@ -38,6 +38,8 @@ from collections import deque
 # s = '123'
 # print(int(s))
 
-data = sys.stdin.readlines()
-print(data)
-print(''.join(data))
+# data = sys.stdin.readlines()
+# print(data)
+# print(''.join(data))
+
+print(int('abc'))

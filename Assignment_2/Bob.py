@@ -4,31 +4,42 @@ import logging
 import zlib
 from collections import deque
 
-# takes in bytes (data), return a checksum which is always a string
-# representing a 10 digit number
+CHECKSUMLENGTH = 10
+SEQNOLENGTH = 5
+HEADERSIZE = 16
+BODYSIZE = 64 - HEADERSIZE
+
+# takes in bytes (data), return an integer
 def computeChecksum(data):
-    checkSum = str(zlib.crc32(data)).zfill(10)
+    checkSum = zlib.crc32(data)
     return checkSum
 
-# data is bytes, checkSum is a string
-def compareChecksum(data, checkSum):
-    return computeChecksum(data) == checkSum
+# packet and checkSum are both bytes
+def compareChecksum(packet):
+    checkSum = 0
+    try:
+        checkSum = int(packet[:CHECKSUMLENGTH].decode())
+    except ValueError:
+        logger.warning(f'CheckSum corrupted: {packet[:CHECKSUMLENGTH]}')
+        return False
+    recompute = computeChecksum(packet[CHECKSUMLENGTH:])
+    logging.debug(f'R: {recompute}, c: {checkSum}, using {packet[CHECKSUMLENGTH:]}')
+    return recompute == checkSum
 
-# 
-
-# takes in bytes (packet), return a tuple of (isEnd, seqNo, checkSum, body)
-# isEnd & seqNo are integers, checkSum & body are strings
+# takes in bytes (packet), return a tuple of (isEnd, seqNo, body)
+# isEnd & seqNo are integers, body is a string
 def parsePacket(packet):
+    # header format: f'{str(checkSum).zfill(10)}{str(seqNo).zfill(5)}{isEnd}'
     packet = packet.decode()
-    isEnd = int(packet[0])
-    seqNo = int(packet[2:7])
-    checkSum = packet[8:18]
-    body = packet[20:]
-    return (isEnd, seqNo, checkSum, body)
+    # checkSum = packet[:CHECKSUMLENGTH]
+    seqNo = int(packet[CHECKSUMLENGTH:HEADERSIZE-1])
+    isEnd = int(packet[HEADERSIZE-1])
+    body = packet[HEADERSIZE:]
+    return (isEnd, seqNo, body)
 
 logger = logging.getLogger()
-logging.basicConfig(level=logging.DEBUG)
-logger.debug('Starting Bob...')
+logging.basicConfig(level=logging.INFO)
+logger.info('Starting Bob...')
 
 portNumber = int(sys.argv[1])
 address = ("localhost", portNumber)
@@ -41,9 +52,24 @@ while True:
     try:
         data = ''
         while True:
+            # receive packet
             pkt = commSocket.recv(5000)
-            logger.info(f'Received packet of length {len(pkt)}: {pkt}')
-            isEnd, seqNo, checkSum, body = parsePacket(pkt)
+            logger.info(f'Received: {pkt}')
+
+            # detect corruption
+            # if not compareChecksum(pkt):
+            #     # send unACK
+            #     logger.warning(f'Packet corrupted, sending unACK')
+            #     commSocket.sendto('unACK'.encode(), address)
+            #     continue
+
+            # parse packet
+            isEnd, seqNo, body = parsePacket(pkt)
+            logger.info(f'Parsed: isEnd={isEnd}, seqNo={seqNo}, body={body}')
+
+            # send ACK
+            commSocket.sendto('ACK'.encode(), address)
+
             data += body
             if isEnd:
                 break
